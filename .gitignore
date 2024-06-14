@@ -1,0 +1,9 @@
+# ignore ALL .txt, .mat, .asv, .pdf files
+*.txt
+*.mat
+*.asv
+*.pdf
+
+# ignore ALL files in FieldData and Sample
+FieldData/
+Sample/
