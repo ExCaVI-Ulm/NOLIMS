@@ -3,7 +3,10 @@
 *.mat
 *.asv
 *.pdf
+*.png
+*.eps
 
 # ignore ALL files in FieldData and Sample
 FieldData/
 Sample/
+ExampleResult_Encoding_Shimterms/
