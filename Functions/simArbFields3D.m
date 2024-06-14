@@ -8,14 +8,16 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
 
     %define time vector
     time_tot = (1:(settings.trajectory.Nsamples))./ settings.trajectory.BW + settings.trajectory.RF_delay;
+
+    time_tot_PE = (1:2*(settings.trajectory.Nsamples))./ settings.trajectory.BW + settings.trajectory.RF_delay;
     
     %initialization of variables needed not only per iteration
     data_meas = zeros(settings.CoilSens.NReceiveCoils, length(time_tot), settings.trajectory.N_PhaseEnc);
-    B_SEM_straight_Reco_tot = zeros(1, settings.trajectory.N_PhaseEnc, settings.reco.matrixsize_reco^3);
-    B_v_RF_tot_straight = zeros(settings.trajectory.N_PhaseEnc, settings.reco.matrixsize_reco^3, 3);
-    BlochM0_rots = zeros(settings.trajectory.N_PhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, 3);
-    CSens_reco_rots = zeros(settings.trajectory.N_PhaseEnc, settings.CoilSens.NReceiveCoils, settings.reco.matrixsize_reco^3);
-    IVDBfield_Reco_tot = zeros(settings.trajectory.N_PhaseEnc, length(time_tot), settings.reco.matrixsize_reco^3);
+    B_SEM_straight_Reco_tot = zeros(1, settings.trajectory.N_PhaseEnc, settings.reco.matrixsize_reco);
+    B_SEM_straight_Reco_tot_t = zeros(1, settings.trajectory.N_PhaseEnc, length(time_tot_PE), settings.reco.matrixsize_reco);
+    BlochM0_rots = zeros(settings.trajectory.N_PhaseEnc, settings.signal.matrixsize_signal,3);
+    CSens_reco_rots = zeros(settings.trajectory.N_PhaseEnc, settings.CoilSens.NReceiveCoils, settings.reco.matrixsize_reco);
+    IVDBfield_Reco_tot = zeros(settings.trajectory.N_PhaseEnc, length(time_tot), settings.reco.matrixsize_reco);
 
     %sample defintion
     rho_vec = repmat(sample_straight(1,:)',[1 settings.trajectory.N_PhaseEnc]);
@@ -37,93 +39,140 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
 
     %Coil Sensitivity: calculate B1 once using Biot-Savart, CoilSens is updated for each Encoding field
     if settings.general.CoilSens
-        [B1, B1_reco] =CalcB1_BiotS(settings,true);
+        [B1, ~] =CalcB1_BiotS(settings,true);
     else
         %assume uniform B1 in y-direction
-        B1 = zeros(settings.CoilSens.NReceiveCoils, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal,3);
-        B1(:,:,:,:,2)=1;
+        B1 = zeros(settings.CoilSens.NReceiveCoils, settings.signal.matrixsize_signal, 3);
+        B1(:,:,2)=1;
 
-        B1_reco = zeros(settings.CoilSens.NReceiveCoils, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco,3);
-        B1_reco(:,:,:,:,2)=1;
+        B1_reco = zeros(settings.CoilSens.NReceiveCoils, settings.reco.matrixsize_reco, 3);
+        B1_reco(:,:,2)=1;
     end
-
-    %calculation of mean B0 field
-    settings = calcMeanB0(settings);
 
     tic
     for u = 1:settings.trajectory.N_PhaseEnc / settings.general.RAM_StepsPhaseEnc
         if settings.general.bool_IVD || settings.general.bool_IVD_reco
             %if IVD is simulated by "sincs" ->import fields and calculate the gradient of the z-component of the field over each voxel 
-            [B_SEM_straight, B_SEM_straight_Reco, BGr_horizontal, BGr_vertikal, BGr_z, BGr_Reco_horizontal, BGr_Reco_vertikal, BGr_Reco_z, B_v_RF, B_v_RF_reco, settings] = ArbFieldsImport_MoreFlex_IVD(settings, dB,u);
+            [B_SEM_straight, B_SEM_straight_Reco, BGr_horizontal, BGr_vertikal, BGr_z, BGr_Reco_horizontal, BGr_Reco_vertikal, BGr_Reco_z, B_v_RF, settings] = ArbFieldsImport_MoreFlex_IVD(settings, dB,u);
         else
-            [B_SEM_straight, B_SEM_straight_Reco, B_v_RF, B_v_RF_reco, settings] = ArbFieldsImport_MoreFlex(settings, dB,u);%B_v_RF_reco
+            %[B_SEM_straight, B_SEM_straight_Reco, B_v_RF, settings] = ArbFieldsImport_MoreFlex(settings, dB,u);%B_v_RF_reco
+            
+            %built own encoding fields
+            B0_map = zeros(3,settings.signal.matrixsize_signal);
+
+            B0_map(1,:) = 2*sin(20*squeeze(sample_straight(2,:)));
+            B0_map(3,:) = settings.general.B0;
+
+            B0_map = settings.general.B0 * B0_map ./(sqrt(settings.general.B0^2 + (2*sin(20*squeeze(sample_straight(2,:)))).^2));
+            B_SEM_t = zeros(settings.general.RAM_StepsPhaseEnc, length(time_tot_PE), 3, settings.signal.matrixsize_signal);
+            B_SEM_straight = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal);
+            B_SEM_straight_t = zeros(settings.general.RAM_StepsPhaseEnc, length(time_tot_PE), settings.signal.matrixsize_signal);
+            if u ==1
+                B_SEM = B0_map;
+                B_SEM_straight(1,:) = settings.general.B0 + settings.trajectory.Gread*squeeze(sample_straight(2,:));
+                
+                B_SEM1 = B_SEM;
+                B_SEM1(3,:) = B_SEM1(3,:) - settings.trajectory.Gread/2*squeeze(sample_straight(2,:)); 
+                B_SEM2 = B_SEM;
+                B_SEM2(3,:) = B_SEM2(3,:) + settings.trajectory.Gread*squeeze(sample_straight(2,:)); 
+                for j = 1:settings.trajectory.Nsamples
+                    B_SEM_t(u,j,:,:) = B_SEM1;
+                    B_SEM_straight_t(1,j,:) = sqrt((B_SEM1(1,:)).^2 + (B_SEM1(2,:)).^2 + (B_SEM1(3,:)).^2);
+                end
+                for j = (1+round(settings.trajectory.Nsamples)):size(B_SEM_straight_t,2)
+                    B_SEM_t(u,j,:,:) = B_SEM2;
+                    B_SEM_straight_t(1,round(j),:) = sqrt((B_SEM2(1,:)).^2 + (B_SEM2(2,:)).^2 + (B_SEM2(3,:)).^2);
+                end
+            elseif u==2
+                B_SEM_straight(1,:) = settings.general.B0 - settings.trajectory.Gread*squeeze(sample_straight(2,:));
+            end
+
+            x_reco = fliplr(linspace(-settings.reco.FOV/2, settings.reco.FOV/2- settings.trajectory.pixel_width, settings.reco.matrixsize_reco));
+
+            B_SEM_straight_Reco = zeros(settings.general.RAM_StepsPhaseEnc, settings.reco.matrixsize_reco);
+            B_SEM_straight_Reco_t = zeros(settings.general.RAM_StepsPhaseEnc, length(time_tot_PE), settings.reco.matrixsize_reco);
+            B_SEM_straight_Reco(1,:) = settings.general.B0 + settings.trajectory.Gread*squeeze(x_reco);
+
+            B0_map_reco = zeros(3,settings.signal.matrixsize_signal);
+
+            B0_map_reco(1,:) = 2*sin(20*squeeze(x_reco));
+            B0_map_reco(3,:) = settings.general.B0;
+
+            B0_map_reco = settings.general.B0 * B0_map_reco ./(sqrt(settings.general.B0^2 + (2*sin(20*squeeze(x_reco))).^2));
+            B_SEM_reco = B0_map_reco;
+            B_SEM1_reco = B_SEM_reco;
+            B_SEM1_reco(3,:) = B_SEM1_reco(3,:) - settings.trajectory.Gread/2*squeeze(x_reco); 
+
+            B_SEM2_reco = B_SEM_reco;
+            B_SEM2_reco(3,:) = B_SEM2_reco(3,:) + settings.trajectory.Gread*squeeze(x_reco);
+
+            for j = 1:settings.trajectory.Nsamples
+                B_SEM_straight_Reco_t(1,j,:) = sqrt((B_SEM1_reco(1,:)).^2 + (B_SEM1_reco(2,:)).^2 + (B_SEM1_reco(3,:)).^2);
+            end
+            for j = (1+round(settings.trajectory.Nsamples)):size(B_SEM_straight_Reco_t,2)
+                B_SEM_straight_Reco_t(1,round(j),:)= sqrt((B_SEM2_reco(1,:)).^2 + (B_SEM2_reco(2,:)).^2 + (B_SEM2_reco(3,:)).^2);
+            end
+
+            B_v_RF = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, 4);
+            B_v_RF(1,:,1:3) = B0_map.';%here add B0 Map
+            B_v_RF(1,:,4) = sqrt(B_v_RF(1,:,1).^2 + B_v_RF(1,:,2).^2 + B_v_RF(1,:,3).^2);
+
         end
 
         %Bloch Simulation for TX pulse
         if settings.general.BlochSim
             BlochM0 = BlochSim3D_RAMEff_Vector(settings, sampleS, B_v_RF, sample_straight, u);
-            BlochM0_rots((1:settings.general.RAM_StepsPhaseEnc)+(u-1)*settings.general.RAM_StepsPhaseEnc,:,:,:,:) = BlochM0;
+            BlochM0_rots((1:settings.general.RAM_StepsPhaseEnc)+(u-1)*settings.general.RAM_StepsPhaseEnc,:,:) = BlochM0;
+
         else
-            BlochM0 = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, 3);
+            BlochM0 = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, 3);
             %assume that all initial magnetization lies in y
-            BlochM0(:,:,:,:,2) = permute(repmat(sampleS.M0, [1, 1, 1, settings.general.RAM_StepsPhaseEnc]), [4,1,2,3]); 
-            BlochM0(:,:,:,:,3) = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal); 
+            BlochM0(:,:,2) = repmat(sampleS.M0, [settings.general.RAM_StepsPhaseEnc, 1]); 
         end
 
         %which part of magnetization vector can be detected
-        N = settings.signal.matrixsize_signal;
-        L = N^3;
-        M=settings.general.RAM_StepsPhaseEnc;
-        M_detect_coil = zeros(settings.CoilSens.NReceiveCoils, settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal^3);
-        BlochM0_straight = reshape(BlochM0, settings.general.RAM_StepsPhaseEnc, N^3,3); 
-        B1_straight = reshape(B1, settings.CoilSens.NReceiveCoils, N^3,3);
-        B_v_RF_straight = reshape(B_v_RF, settings.general.RAM_StepsPhaseEnc, N^3, 4);
+        M_detect_coil = zeros(settings.CoilSens.NReceiveCoils, settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal);
         for uu = 1:settings.CoilSens.NReceiveCoils
-            parfor ll = 1:M
-                for j = 1:L
-                    M_abs = norm(squeeze(BlochM0_straight(ll,j,:)));                                
-                    B1_perp = squeeze(B1_straight(uu,j,:)) - dot(squeeze(B1_straight(uu,j,:)), squeeze(B_v_RF_straight(ll,j,1:3))) * squeeze(B_v_RF_straight(ll,j,1:3)) /(norm(squeeze(B_v_RF_straight(ll,j,1:3)))^2);                                
-                               
-                    Theta = acos(squeeze(B_v_RF_straight(ll,j,3))/norm(squeeze(B_v_RF_straight(ll,j,1:3))));
-                    ez = [0;0;1];
-                    if Theta == 0   %B0 in z -> no perpendicular component
-                        Phase_CSens_B1 = atan2(B1_straight(uu,j,2), B1_straight(uu,j,1));
-                        Phase_CSens_M = atan2(BlochM0_straight(ll,j,2), BlochM0_straight(ll,j,1));
-                    else
-                        B_perp = squeeze(B_v_RF_straight(ll,j,1:3)) - squeeze(B_v_RF_straight(ll,j,3)) * ez;
-                        rot_axis = cross(ez, B_perp / norm(B_perp));
-                        B1_rot = rot_axis * dot(rot_axis, squeeze(B1_straight(uu,j,:))) + cos(-Theta)*cross(cross(rot_axis, squeeze(B1_straight(uu,j,:))),rot_axis) + sin(-Theta)*cross(rot_axis, squeeze(B1_straight(uu,j,:)));
-                        M_rot = rot_axis * dot(rot_axis, squeeze(BlochM0_straight(ll,j,:))) + cos(-Theta)*cross(cross(rot_axis, squeeze(BlochM0_straight(ll,j,:))),rot_axis) + sin(-Theta)*cross(rot_axis, squeeze(BlochM0_straight(ll,j,:)));
-                        Phase_CSens_B1 = atan2(B1_rot(2), B1_rot(1));
-                        Phase_CSens_M = atan2(M_rot(2), M_rot(1));
-                    end
+            for ll = 1:settings.general.RAM_StepsPhaseEnc
+                for j = 1:settings.signal.matrixsize_signal
                     
-                    if Phase_CSens_B1 < 0
-                        Phase_CSens_B1 = Phase_CSens_B1 + 2*pi;
-                    end
-                    if Phase_CSens_M < 0
-                        Phase_CSens_M = Phase_CSens_M + 2*pi;
-                    end
-                    if Phase_CSens_M > Phase_CSens_B1
-                        M_detect_coil(uu,ll,j) = norm(B1_perp)/norm(squeeze(B1_straight(uu,j,:)))*M_abs*exp(1i*acos(dot(squeeze(BlochM0_straight(ll,j,:)), B1_perp) / (norm(B1_perp)*norm(squeeze(BlochM0_straight(ll,j,:))))));
-                    else
-                        M_detect_coil(uu,ll,j) = norm(B1_perp)/norm(squeeze(B1_straight(uu,j,:)))*M_abs*exp(-1i*acos(dot(squeeze(BlochM0_straight(ll,j,:)), B1_perp) / (norm(B1_perp)*norm(squeeze(BlochM0_straight(ll,j,:))))));
-                    end
+                                M_abs = norm(squeeze(BlochM0(ll,j,:)));
                                 
-                    if isnan(M_detect_coil(uu,ll,j))
-                        M_detect_coil(uu,ll,j) = 0;
-                    end
-
-
+                                B1_perp = squeeze(B1(uu,j,:)) - dot(squeeze(B1(uu,j,:)), squeeze(B_SEM2(1:3,j))) * squeeze(B_SEM2(1:3,j)) /(norm(squeeze(B_SEM2(1:3,j)))^2);                                
+                                
+                                Theta = acos(squeeze(B_v_RF(ll,j,3))/norm(squeeze(B_v_RF(ll,j,1:3))));
+                                ez = [0;0;1];
+                                if Theta == 0   %B0 in z -> no perpendicular component
+                                    Phase_CSens_B1 = atan2(B1(uu,j,2), B1(uu,j,1));
+                                    Phase_CSens_M = atan2(BlochM0(ll,j,2), BlochM0(ll,j,1));
+                                else
+                                    B_perp = squeeze(B_v_RF(ll,j,1:3)) - squeeze(B_v_RF(ll,j,3)) * ez;
+                                    rot_axis = cross(ez, B_perp / norm(B_perp));
+                                    B1_rot = rot_axis * dot(rot_axis, squeeze(B1(uu,j,:))) + cos(-Theta)*cross(cross(rot_axis, squeeze(B1(uu,j,:))),rot_axis) + sin(-Theta)*cross(rot_axis, squeeze(B1(uu,j,:)));
+                                    M_rot = rot_axis * dot(rot_axis, squeeze(BlochM0(ll,j,:))) + cos(-Theta)*cross(cross(rot_axis, squeeze(BlochM0(ll,j,:))),rot_axis) + sin(-Theta)*cross(rot_axis, squeeze(BlochM0(ll,j,:)));
+                                    Phase_CSens_B1 = atan2(B1_rot(2), B1_rot(1));
+                                    Phase_CSens_M = atan2(M_rot(2), M_rot(1));
+                                end
+                                
+                                if Phase_CSens_B1 < 0
+                                    Phase_CSens_B1 = Phase_CSens_B1 + 2*pi;
+                                end
+                                if Phase_CSens_M < 0
+                                    Phase_CSens_M = Phase_CSens_M + 2*pi;
+                                end
+                                if Phase_CSens_M > Phase_CSens_B1
+                                    M_detect_coil(uu,ll,j) = norm(B1_perp)/norm(squeeze(B1(uu,j,:)))*M_abs*exp(1i*acos(dot(squeeze(BlochM0(ll,j,:)), B1_perp) / (norm(B1_perp)*norm(squeeze(BlochM0(ll,j,:))))));
+                                else
+                                    M_detect_coil(uu,ll,j) = norm(B1_perp)/norm(squeeze(B1(uu,j,:)))*M_abs*exp(-1i*acos(dot(squeeze(BlochM0(ll,j,:)), B1_perp) / (norm(B1_perp)*norm(squeeze(BlochM0(ll,j,:))))));
+                                end
+                                
+                                if isnan(M_detect_coil(uu,ll,j))
+                                    M_detect_coil(uu,ll,j) = 0;
+                                end
                 end
+                rho_vec(:,ll + (u-1)*settings.general.RAM_StepsPhaseEnc, uu) = reshape(squeeze(M_detect_coil(uu,ll,:)), 1, []);
             end
         end
-        for uu = 1:settings.CoilSens.NReceiveCoils
-            for ll = 1:M
-                rho_vec(:,ll + (u-1)*settings.general.RAM_StepsPhaseEnc, uu) = squeeze(M_detect_coil(uu,ll,:));
-            end
-        end
-
         
         %IVD
         %Alternative to Oversampling using matrixsize_signal, matrixsize_reco: simulate IVD per sinc dephasing
@@ -156,19 +205,19 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
             end  
             clearvars BGr_horizontal BGr_vertikal BGr_Reco_horizontal BGr_Reco_vertikal BGr_horizontal_Sus_IVDSinc BGr_vertikal_Sus_IVDSinc
         else
-            IVD = (ones(settings.general.RAM_StepsPhaseEnc, length(time_tot), settings.signal.matrixsize_signal^3));
-            IVDBfield_Reco = (ones(settings.general.RAM_StepsPhaseEnc, length(time_tot), settings.reco.matrixsize_reco^3));
+            IVD = (ones(settings.general.RAM_StepsPhaseEnc, length(time_tot), settings.signal.matrixsize_signal));
+            IVDBfield_Reco = (ones(settings.general.RAM_StepsPhaseEnc, length(time_tot), settings.reco.matrixsize_reco));
         end
 
-        IVDBfield_Reco_tot((1:settings.general.RAM_StepsPhaseEnc)+(u-1)*settings.general.RAM_StepsPhaseEnc,:,:,:) = IVDBfield_Reco;
+        IVDBfield_Reco_tot((1:settings.general.RAM_StepsPhaseEnc)+(u-1)*settings.general.RAM_StepsPhaseEnc,:,:) = IVDBfield_Reco;
         
         %% Coil Sensitivity: conversion of B1 to Coil Sensitivity -> depends on SEM -> different for each encoding step
         if settings.general.CoilSens
             [C_rot, C_rot_reco] = CoilSensB1(settings, B1, B_v_RF); 
             C_rot = abs(C_rot);%phase already done with projection onto B1
         else
-            C_rot = ones(settings.general.RAM_StepsPhaseEnc, settings.CoilSens.NReceiveCoils, settings.signal.matrixsize_signal^3); %uniform Coil Sensitivity
-            C_rot_reco = ones(settings.general.RAM_StepsPhaseEnc, settings.CoilSens.NReceiveCoils, settings.reco.matrixsize_reco^3);
+            C_rot = ones(settings.general.RAM_StepsPhaseEnc, settings.CoilSens.NReceiveCoils, settings.signal.matrixsize_signal); %uniform Coil Sensitivity
+            C_rot_reco = ones(settings.general.RAM_StepsPhaseEnc, settings.CoilSens.NReceiveCoils, settings.reco.matrixsize_reco);
         end
         CSens_reco_rots((1:settings.general.RAM_StepsPhaseEnc)+(u-1)*settings.general.RAM_StepsPhaseEnc, :,:) = C_rot_reco;
 
@@ -183,11 +232,12 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
             w = ones(size(B_SEM_straight)); 
         end
         %% Encoding: Calculation of encoding matrix and correponding signal
-        phi_enc = zeros(settings.general.RAM_StepsPhaseEnc, length(time_tot), settings.signal.matrixsize_signal^3);
+        phi_enc = zeros(settings.general.RAM_StepsPhaseEnc, length(time_tot), settings.signal.matrixsize_signal);
     
         for jj = 1:settings.general.RAM_StepsPhaseEnc
-            phi_temp_enc = 1/(2*pi)*settings.general.gamma*time_tot.'.*(squeeze(B_SEM_straight(1,jj,:)-(settings.general.B0))).';
             
+            phi_temp_enc = 1/(2*pi)*settings.general.gamma* cumsum(squeeze(B_SEM_straight_t(jj,:,:) - settings.general.B0), 1)*(time_tot(2)-time_tot(1));
+            phi_temp_enc = phi_temp_enc(settings.trajectory.Nsamples+1:end,:);
             if settings.general.T2
                 %if T2 should be simulated -> add decaying contribution of transversal magnetization
                 phi_temp_enc = phi_temp_enc + 1/(2*pi)*1i*(time_tot./squeeze(sample_straight(5,:)).').';
@@ -201,7 +251,7 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
             phi_enc(jj,:,:) = phi_temp_enc;
         end
     
-        clearvars phi_temp_enc int_IVD_vec
+        clearvars int_IVD_vec phi_temp_enc
         Exp_enc = (exp(2*pi*1i*phi_enc)); %element-wise exponential
         clearvars phi_enc
             
@@ -220,14 +270,15 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
                     data_meas(mmm, :,(u-1)*settings.general.RAM_StepsPhaseEnc + ll) = (awgn(squeeze(S(mmm, :,ll)), settings.signal.SNR, 'measured'));    %add Noise such that we achieve the desired SNR
                 end  
             end
-            B_SEM_straight_Reco_tot(:,(u-1)*settings.general.RAM_StepsPhaseEnc + ll,:) = B_SEM_straight_Reco(:,ll,:);
-            B_v_RF_tot_straight((u-1)*settings.general.RAM_StepsPhaseEnc + ll,:,1:3) = reshape(B_v_RF_reco(ll,:,:,:,:), 1, [], 3);
+            B_SEM_straight_Reco_tot(:,(u-1)*settings.general.RAM_StepsPhaseEnc + ll,:) = B_SEM_straight_Reco(ll,:);
+            B_SEM_straight_Reco_tot_t(:,(u-1)*settings.general.RAM_StepsPhaseEnc + ll,:,:) = B_SEM_straight_Reco_t(ll,:,:);
         end
     end
     signal_gen = toc
 
     S_cut = data_meas;
     as(BlochM0_rots)
+    as(S_cut/8)
     clearvars B_SEM_straight B_SEM_straight_Reco B_v_RF BGr_horizontal BGr_horizontal_Sus_IVDSinc BGr_Reco_horizontal BGr_Reco_vertikal BGr_vertikal BGr_vertikal_Sus_IVDSinc BlochM0 Bvec coord_x coord_x_reco coord_y coord_y_reco coord_z coord_z_reco data_meas dB Exp_enc int_IVD_vec phi_enc S vec vec_reco rho_vec sampleS
     %% Reconstruction
     disp('Reco');tic;
@@ -242,14 +293,13 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
         S_cut = Signal_concat_coil;
     end
 
-    amplitude_mod1 = zeros(settings.CoilSens.NReceiveCoils, settings.trajectory.N_PhaseEnc, settings.reco.matrixsize_reco^3);
-    B1_reco_straight = reshape(squeeze(B1_reco), settings.CoilSens.NReceiveCoils, [], 3);
+    amplitude_mod1 = zeros(settings.CoilSens.NReceiveCoils, settings.trajectory.N_PhaseEnc, settings.reco.matrixsize_reco);
     %amplitude modulation due to sensitivity differences
     for uu = 1:settings.CoilSens.NReceiveCoils
         for ll = 1:settings.trajectory.N_PhaseEnc
-            for j = 1:settings.reco.matrixsize_reco^3
-                B1_perp_r = squeeze(B1_reco_straight(uu,j,:)) - dot(squeeze(B1_reco_straight(uu,j,:)), squeeze(B_v_RF_tot_straight(ll,j,1:3))) * squeeze(B_v_RF_tot_straight(ll,j,1:3)) /(norm(squeeze(B_v_RF_tot_straight(ll,j,1:3)))^2);                                
-                amplitude_mod1(uu,ll,j) = norm(B1_perp_r)/norm(squeeze(B1_reco_straight(uu,j,:)));
+            for j = 1:settings.reco.matrixsize_reco
+                B1_perp_r = squeeze(B1_reco(uu,j,:)) - dot(squeeze(B1_reco(uu,j,:)), squeeze(B_SEM2_reco(1:3,j))) * squeeze(B_SEM2_reco(1:3,j)) /(norm(squeeze(B_SEM2_reco(1:3,j)))^2);                                
+                amplitude_mod1(uu,ll,j) = norm(B1_perp_r)/norm(squeeze(B1_reco(uu,j,:)));
             end
         end
     end
@@ -258,8 +308,10 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
     %for Reco: setting up the encoding matrix either for PCG or ART (RAMSavingReco)
     if ~settings.general.RAMSavingReco
         for j =1:settings.trajectory.N_PhaseEnc
-            phi_temp = 1/(2*pi)*settings.general.gamma*time_tot.'.*(squeeze(B_SEM_straight_Reco_tot(1,j,:)-(settings.general.B0))).';
                         
+            phi_temp = 1/(2*pi)*settings.general.gamma* cumsum(squeeze(B_SEM_straight_Reco_tot_t(1,j,:,:) - settings.general.B0), 1)*(time_tot(2)-time_tot(1));
+            phi_temp = phi_temp(settings.trajectory.Nsamples+1:end,:);
+
             phi_vert{j} = phi_temp;
 
             if settings.general.bool_IVD_reco
@@ -275,6 +327,10 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
         phi_reco_Nrot = vertcat(phi_vert{:});
         clearvars phi_vert phi_temp
         E_reco = (exp(1i*2*pi*phi_reco_Nrot));
+        
+        amplitude_mod = repmat(squeeze(amplitude_mod1), [1, round(settings.trajectory.Nsamples)]).';
+        amplitude_mod((amplitude_mod == 0)) = 1;    %if 0 -> no sensitivity -> not possible to recover anything, also makes problems with inversion of E
+        E_reco = amplitude_mod .*E_reco;
 
         if settings.general.bool_IVD_reco
             IVDBfield_Reco_tot_Nrot = vertcat(IVDBfield_Reco_tot_vert{:});
@@ -285,7 +341,7 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
         if settings.general.LowFieldw
             w_Reco = vertcat(w_Reco_time{:});
             E_reco = w_Reco.*E_reco;
-            %clearvars w_Reco w_Reco_time
+            clearvars w_Reco w_Reco_time
         end
 
         if settings.general.CoilSens
@@ -320,45 +376,25 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
             E_reco = Csens_Concat.*E_reco;
         end
 
-        amplitude_mod1 = zeros(settings.CoilSens.NReceiveCoils, settings.trajectory.N_PhaseEnc, settings.reco.matrixsize_reco^3);
-        B1_reco_straight = reshape(squeeze(B1_reco), settings.CoilSens.NReceiveCoils, [], 3);
-        %amplitude modulation due to sensitivity differences
-        for uu = 1:settings.CoilSens.NReceiveCoils
-            for ll = 1:settings.trajectory.N_PhaseEnc
-                for j = 1:settings.reco.matrixsize_reco^3
-                    B1_perp_r = squeeze(B1_reco_straight(uu,j,:)) - dot(squeeze(B1_reco_straight(uu,j,:)), squeeze(B_v_RF_tot_straight(ll,j,1:3))) * squeeze(B_v_RF_tot_straight(ll,j,1:3)) /(norm(squeeze(B_v_RF_tot_straight(ll,j,1:3)))^2);                                
-                    amplitude_mod1(uu,ll,j) = norm(B1_perp_r)/norm(squeeze(B1_reco_straight(uu,j,:)));
-                end
-            end
-        end
-
-        for uu = 1:settings.CoilSens.NReceiveCoils
-            for ll = 1:settings.trajectory.N_PhaseEnc
-                amp_reco{(uu-1)*settings.trajectory.N_PhaseEnc + ll} = repmat(squeeze(amplitude_mod1(uu,ll,:)), [1, round(settings.trajectory.Nsamples)]).';
-            end
-        end
-        amplitude_mod = vertcat(amp_reco{:});
-        amplitude_mod((amplitude_mod == 0)) = 1;    %if 0 -> no sensitivity -> not possible to recover anything, also makes problems with inversion of E
-        E_reco = amplitude_mod .*E_reco;
         
         iteration=100;
     
         S_backStraightCut = S_cut(:);
         reco_rho_straight = pcg(E_reco'*E_reco, E_reco'*S_backStraightCut, 1e-10, iteration, diag(diag(E_reco'*E_reco)));
-        reco_rho_img = reshape(reco_rho_straight, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, []);
+        reco_rho_img = reco_rho_straight;
     else
         %Kaczmarz method /ART reco -> calculate each row of E individually -> reduction of RAM demands
         
         %Parameter that worked well
-        max_it_ART = 16;
+        max_it_ART = 360;
         lambda = 0.08; 
-        N_ART = settings.reco.matrixsize_reco^3;
+        N_ART = settings.reco.matrixsize_reco;
         x0_ART = zeros(N_ART,1);
         S_backStraightCut = S_cut(:);
 
         %if your GPU VRAM is large enough -> do the reconstruction on the GPU
         if settings.general.gpuComp
-            B_SEM_straight_Reco_tot = gpuArray((B_SEM_straight_Reco_tot));
+            B_SEM_straight_Reco_tot = gpuArray((B_SEM_straight_Reco_tot_t));
             time_tot = gpuArray(time_tot);
             S_backStraightCut = gpuArray(S_backStraightCut);
             X = gpuArray(x0_ART);
@@ -387,9 +423,9 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
                 end
                 
                 rot_index = floor((jj - (c_index-1) * length(time_tot)*settings.trajectory.N_PhaseEnc - 1)/length(time_tot))+1;
-
-                An = exp(1i*settings.general.gamma*time_tot(t_index)*((B_SEM_straight_Reco_tot(1,rot_index,:)-settings.general.B0)));
-                An = squeeze(An).';
+                int_B = cumsum(squeeze(B_SEM_straight_Reco_tot(1,rot_index,:,:) - settings.general.B0), 1);
+                int_B = int_B(round(settings.trajectory.Nsamples)+1:end,:);
+                An = exp(1i*settings.general.gamma*int_B(t_index,:)*(time_tot(2)-time_tot(1)));                
 
                 if settings.general.bool_IVD_reco
                     An = squeeze(IVDBfield_Reco_tot(rot_index,t_index,:)).'.*An;
@@ -397,10 +433,10 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
 
                 if settings.general.CoilSens
                     An = squeeze(CSens_reco_rots(rot_index, c_index,:)).'.*An;
-                end 
+                end
 
                 if settings.general.LowFieldw
-                    An = settings.general.gamma*squeeze(B_SEM_straight_Reco_tot(1,rot_index,:)).'.*An;
+                    An = settings.general.gamma*squeeze(B_SEM_straight_Reco_tot(1,rot_index,t_index,:)).'.*An;
                 end
 
                 %amplitude-correction
@@ -413,13 +449,13 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
         end
         
         if settings.general.gpuComp
-            reco_rho_img = reshape(gather(X), settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, []);
+            reco_rho_img = gather(X);
         else
-            reco_rho_img = reshape((X), settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, []);
+            reco_rho_img = X;
         end
 
     end
 
-    as(reco_rho_img, 'Img Func', 'select', [':,:,', num2str(settings.reco.matrixsize_reco/2)]);
+    as(reco_rho_img, 'Img Func');
     elapsedtime_reco = toc
 end

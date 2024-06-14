@@ -1,4 +1,4 @@
-function [B_SEM_straight, B_SEM_straight_Reco, B_v_RF, B_v_RF_reco, settings] = ArbFieldsImport_MoreFlex(settings, dB,u)
+function [B_SEM_straight, B_SEM_straight_Reco, B_v_RF, settings] = ArbFieldsImport_MoreFlex(settings, dB,u)
 %ArbFieldsImport_MoreFlex   Import of encoding field
 %   Input:  -settings struct
 %           -3D additional magnetic field caused by susceptibility differences (dB)
@@ -7,7 +7,6 @@ function [B_SEM_straight, B_SEM_straight_Reco, B_v_RF, B_v_RF_reco, settings] = 
 %           -B_SEM_straight: reshaped magnetic field vector used to simulate the signal
 %           -B_SEM_straight: reshaped magnetic field vector used for reconstruction
 %           -B_v_RF: Magnetic field during RF pulse -> used in Bloch Simulation
-%           -B_v_RF_reco: Magnetic field during RF pulse for reconstruction
 %           -settings struct
 
 Nx_CST = settings.CST.Nx_CST;
@@ -47,12 +46,11 @@ matrixsize_signal_loc = settings.signal.matrixsize_signal;
 matrixsize_reco_loc = settings.reco.matrixsize_reco;
 
 Bvec = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, 4);%1 x, 2 y, 3 z, 4 abs; 
-Bvec_Reco = zeros(settings.general.RAM_StepsPhaseEnc, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, 4);%1 x, 2 y, 3 z, 4 abs; 
 NRAM_loc = settings.general.RAM_StepsPhaseEnc;
 SixRowsLoc = settings.CST.SixRows;
 
 for kkk = 1:NRAM_loc
-    [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, kkk, u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc, settings);
+    [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, kkk, u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc);
     %Bout(1:3,X,Y,Z); 1:X-Component, 2:Y-Component, 3:Z-Component
     
     Bvec(kkk,:,:,:,1) = squeeze(Bout(1,:,:,:));
@@ -62,14 +60,7 @@ for kkk = 1:NRAM_loc
     Bvec(kkk,:,:,:,4) = sqrt(Bvec(kkk,:,:,:,1).^2 + Bvec(kkk,:,:,:,2).^2 + Bvec(kkk,:,:,:,3).^2);
 
     B_SEM_straight(kkk,:) = reshape(squeeze(Bvec(kkk,:,:,:,4)), 1, []);
-
-    Bvec_Reco(kkk,:,:,:,1) = squeeze(Bout_Reco(1,:,:,:));
-    Bvec_Reco(kkk,:,:,:,2) = squeeze(Bout_Reco(2,:,:,:));
-    Bvec_Reco(kkk,:,:,:,3) = squeeze(Bout_Reco(3,:,:,:));
-
-    Bvec_Reco(kkk,:,:,:,4) = sqrt(Bvec_Reco(kkk,:,:,:,1).^2 + Bvec_Reco(kkk,:,:,:,2).^2 + Bvec_Reco(kkk,:,:,:,3).^2);
-
-    B_SEM_straight_Reco(1, kkk, :) = reshape(squeeze(Bvec_Reco(kkk,:,:,:,4)), 1, []);
+    B_SEM_straight_Reco(1, kkk, :) = reshape(Bout_Reco, 1, []);
     B_SEM_z_Comp_Suscept_BlochSim(kkk,:,:,:) = squeeze(Bout(3,:,:,:)) + squeeze((dB));
 end
 B_SEM_straight = permute(repmat(B_SEM_straight, 1, 1, 2), [3 1 2]); %keep possibility of time dependence
@@ -82,17 +73,12 @@ B_v_RF(:,:,:,:,3) = Bvec(:,:,:,:,3);
 if settings.general.Suscept
     B_v_RF(:,:,:,:,3) = B_SEM_z_Comp_Suscept_BlochSim;
 end
-
-B_v_RF_reco = zeros(settings.general.RAM_StepsPhaseEnc, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, 3);
-B_v_RF_reco(:,:,:,:,1) = Bvec_Reco(:,:,:,:,1);
-B_v_RF_reco(:,:,:,:,2) = Bvec_Reco(:,:,:,:,2);
-B_v_RF_reco(:,:,:,:,3) = Bvec_Reco(:,:,:,:,3);
-
 B_v_RF(:,:,:,:,4) = sqrt(B_v_RF(:,:,:,:,1).^2 + B_v_RF(:,:,:,:,2).^2 + B_v_RF(:,:,:,:,3).^2);
+
 end
 
-function [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, jj,u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc, settings)
-    fileID = fopen(fullfile(path_rot, filepaths_nonsim{jj + (u-1)*NRAM_loc}),'r');
+function [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, jj,u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc)
+    fileID = fopen([path_rot, filepaths_nonsim{jj + (u-1)*NRAM_loc}],'r');
     dataArray = textscan(fileID, formatSpec, 'Delimiter', '', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
     
     fclose(fileID);
@@ -179,17 +165,12 @@ function [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRo
     end
 
     %BFOV_reco = sqrt(BXrFOV.^2 + BYrFOV.^2 + BZrFOV.^2);
-    %BFOV_interpol_Reco=sqrt(BXrFOV_interpol_Reco.^2 + BYrFOV_interpol_Reco.^2 + BZrFOV_interpol_Reco.^2);%interp3(y_Bfield, x_Bfield, z_Bfield, BFOV_reco,Y_Bfield_Reco', X_Bfield_Reco, Z_Bfield_Reco, 'linear');
+    BFOV_interpol_Reco=sqrt(BXrFOV_interpol_Reco.^2 + BYrFOV_interpol_Reco.^2 + BZrFOV_interpol_Reco.^2);%interp3(y_Bfield, x_Bfield, z_Bfield, BFOV_reco,Y_Bfield_Reco', X_Bfield_Reco, Z_Bfield_Reco, 'linear');
     
     Bout = zeros(3, matrixsize_signal_loc, matrixsize_signal_loc, matrixsize_signal_loc);
     Bout(1,:,:,:) = BXrFOV_interpol;    %used for Bloch-Simulations
     Bout(2,:,:,:) = BYrFOV_interpol;
-    Bout(3,:,:,:) = BZrFOV_interpol+ settings.general.B0;
+    Bout(3,:,:,:) = BZrFOV_interpol;
 
-    disp('Added Ground field'); %might be omitted if already included in .txt file
-
-    Bout_Reco = zeros(3, matrixsize_reco_loc, matrixsize_reco_loc, matrixsize_reco_loc);
-    Bout_Reco(1,:,:,:) = BXrFOV_interpol_Reco;
-    Bout_Reco(2,:,:,:) = BYrFOV_interpol_Reco;
-    Bout_Reco(3,:,:,:) = BZrFOV_interpol_Reco + settings.general.B0;
+    Bout_Reco = BFOV_interpol_Reco; %used for image reconstruction
 end

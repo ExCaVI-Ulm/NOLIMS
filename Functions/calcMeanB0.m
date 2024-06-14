@@ -56,7 +56,7 @@ settings.general.FreqField = 42.577478 * settings.general.B0; %MHz
 end
 
 function [Bout] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, jj, matrixsize_signal_loc, matrixsize_reco_loc, settings)
-    fileID = fopen(fullfile(path_rot, filepaths_nonsim{jj}),'r');
+    fileID = fopen([path_rot, filepaths_nonsim{jj}],'r');
     dataArray = textscan(fileID, formatSpec, 'Delimiter', '', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
     fclose(fileID);
     if SixRowsLoc
@@ -121,15 +121,8 @@ function [Bout] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSp
     BYrFOV_interpol=interp3(y_Bfield, x_Bfield, z_Bfield, BYrFOV,Y_Bfield', X_Bfield, Z_Bfield, 'linear');
     BZrFOV_interpol=interp3(y_Bfield, x_Bfield, z_Bfield, BZrFOV,Y_Bfield', X_Bfield, Z_Bfield, 'linear');
     
-%     if B0Import_loc
-%         BXrFOV_interpol = BXrFOV_interpol + squeeze(settings.signal.B0Map(1,:,:,:));
-%         BYrFOV_interpol = BYrFOV_interpol + squeeze(settings.signal.B0Map(2,:,:,:));
-%         BZrFOV_interpol = BZrFOV_interpol + squeeze(settings.signal.B0Map(3,:,:,:));
-%     end
-
     Bout = zeros(3, matrixsize_signal_loc, matrixsize_signal_loc, matrixsize_signal_loc);
     Bout(1,:,:,:) = BXrFOV_interpol;    
     Bout(2,:,:,:) = BYrFOV_interpol;
-    Bout(3,:,:,:) = BZrFOV_interpol+ settings.general.B0;
-    disp('Added Ground field'); %might be omitted if already included in .txt file
+    Bout(3,:,:,:) = BZrFOV_interpol;
 end

@@ -1,5 +1,6 @@
 function [C_rot_resh, C_rot_resh_reco] = CoilSensB1(settings,B1, Bvec)
 %CoilSensB1 Calculate Coil Sensitivity of RX Array with respect to B1 calculated with Biot-Savart
+%
 %   Input:  -settings struct
 %           -B1: Magnetic field produced by RX array calculated with the Biot-Savart Law
 %           -Bvec: Encoding field / B0
@@ -32,17 +33,15 @@ for m = 1:settings.general.RAM_StepsPhaseEnc
             for u = 1: settings.signal.matrixsize_signal
                 for k = 1:settings.signal.matrixsize_signal
                     Mag_CSens(m, ll, j,u,k) = norm(squeeze(B1(ll,j,u,k,:)) - dot(squeeze(B1(ll,j,u,k,:)), squeeze(Bvec(m,j,u,k,1:3)))/norm(squeeze(Bvec(m,j,u,k,1:3)))^2 * squeeze(Bvec(m,j,u,k,1:3)));
-                    
-                    Theta = acos(squeeze(Bvec(m,j,u,k,3))/norm(squeeze(Bvec(m,j,u,k,1:3))));
+                    %Phase_CSens(m, ll, j,u,k) = atan2(-B1(ll,j,u,k,2), B1(ll,j,u,k,1));
+
+                    Theta = arccos(squeeze(Bvec(m,j,u,k,3))/norm(squeeze(Bvec(m,j,u,k,1:3))));
                     ez = [0;0;1];
-                    if Theta == 0   %B0 in z -> no perpendicular component
-                        Phase_CSens(m, ll, j,u,k) = atan2(-B1(ll,j,u,k,2), B1(ll,j,u,k,1));
-                    else
-                        B_perp = squeeze(Bvec(m,j,u,k,1:3)) - squeeze(Bvec(m,j,u,k,3)) * ez;
-                        rot_axis = cross(ez, B_perp / norm(B_perp));
-                        B1_rot = rot_axis * dot(rot_axis, squeeze(B1(ll,j,u,k,:))) + cos(-Theta)*cross(cross(rot_axis, squeeze(B1(ll,j,u,k,:))),rot_axis) + sin(-Theta)*cross(rot_axis, squeeze(B1(ll,j,u,k,:)));
-                        Phase_CSens(m, ll, j,u,k) = atan2(-B1_rot(2), B1_rot(1));
-                    end
+                    B_perp = squeeze(Bvec(m,j,u,k,1:3)) - squeeze(Bvec(m,j,u,k,3)) * ez;
+                    rot_axis = cross(ez, B_perp / norm(B_perp));
+                    B1_rot = rot_axis * dot(rot_axis, squeeze(B1(ll,j,u,k,:))) + cos(-Theta)*cross(cross(rot_axis, squeeze(B1(ll,j,u,k,:))),rot_axis) + sin(-Theta)*cross(rot_axis, squeeze(B1(ll,j,u,k,:)));
+                    Phase_CSens(m, ll, j,u,k) = atan2(-B1_rot(ll,j,u,k,2), B1_rot(ll,j,u,k,1));
+
                     C_rot(m,ll,j,u,k) = Mag_CSens(m, ll, j,u,k)*exp(1i*Phase_CSens(m, ll, j,u,k));
                     
                     if(Mag_CSens(m, ll, j,u,k) > max_coilsens(m,ll))

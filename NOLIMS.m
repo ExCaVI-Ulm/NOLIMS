@@ -7,7 +7,7 @@ addpath(genpath(pwd)); %add current path and all subfolders to search path
 curr_path = pwd;    %needs to be where 'NOLIMS.m' is saved
 
 %constants
-settings.general.gamma = 2.675221874411*10^8;             % in rad/s/T; gyromagnetic ratio of H-nuclei.
+settings.general.gamma = 2.675221874411*10^2;             % in rad/s/T; gyromagnetic ratio of H-nuclei.
 settings.general.u0=1.26e-6;                              %u_0.
 settings.general.T = 293.15;                              %Temperature in K: 20°C
 settings.general.k = 1.380649e-23;                        %Boltzmann constant
@@ -21,14 +21,20 @@ settings.general.FreqField = settings.general.gamma / (2*pi)*10^-6 * settings.ge
 settings.general.noise = false;                                                                 % true: noise is added to simulated signal
 settings.signal.SNR = 33;                                                                       %SNR in dB
 
-settings.general.T2 = true;                                                                    %true: simulate T2-decay: time-vector should not start at t=0;
-settings.general.Suscept = true;                                                               %true: additional magnetic field due to susceptibility differences as additional phase during encoding: Assumption: B0 in z-dir (last dimension of susceptibility distribution)
+%%%%%%%%%%%%%%%%%%%%%%%%%
+%NOTE: not all features are available/tested in this example, it just demonstrates
+%how time dependence might be integrated (in this 1D example)0 if desired in the basic parts of
+%the software
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+settings.general.T2 = false;                                                                    %true: simulate T2-decay: time-vector should not start at t=0;
+settings.general.Suscept = false;                                                               %true: additional magnetic field due to susceptibility differences as additional phase during encoding: Assumption: B0 in z-dir (last dimension of susceptibility distribution)
 settings.general.bool_IVD = false;                                                              %true: use sinc dephasing algorithm for signal generation: ATTENTION: then, matrixsize_signal = matrixsize_reco!; approximation: only gradients of field in z-direction are taken into account
 settings.general.bool_IVD_reco = false;                                                         %true: incorporate dephasing (modeled with sincs) into reconstruction of data
-settings.general.BlochSim = false;                                                              %true: Bloch Simulation for RX pulse with possibly underlying SEMs or Vector-character of B0
+settings.general.BlochSim = true;                                                              %true: Bloch Simulation for RX pulse with possibly underlying SEMs or Vector-character of B0
 settings.general.CoilSens = false;                                                              %if false: uniform coil sens
 settings.general.LowFieldw = false;                                                             %if true: w(r) in signal equation
-settings.general.T1Effect = true;                                                              %if true: T1 effects between encoding steps with TR are included
+settings.general.T1Effect = false;                                                              %if true: T1 effects between encoding steps with TR are included
 settings.general.B0MapImport = false;                                                           %if true: import B0 Fieldmap
 settings.general.B0MapInReco = false;                                                           %if true: B0Map in Reconstruction used
 settings.general.B1MapImport = false;                                                           %if true: load B1Map for excitation, be careful with the format / left/right circularized etc.
@@ -39,15 +45,15 @@ settings.general.RAM_StepsPhaseEnc = 1;                                         
 
 settings.reco.FOV = 0.2;                        %FOV in m
 
-settings.signal.matrixsize_signal = 8;         %matrix size used for simulating MRI signal
+settings.signal.matrixsize_signal = 64;         %matrix size used for simulating MRI signal
 
-settings.reco.matrixsize_reco = 8;             %reconstructed matrix size: if matrixsize_signal > matrixsize_reco -> simulation of intravoxel dephasing -> factor between two values indicates how many subvoxels are simulated
+settings.reco.matrixsize_reco = 64;             %reconstructed matrix size: if matrixsize_signal > matrixsize_reco -> simulation of intravoxel dephasing -> factor between two values indicates how many subvoxels are simulated
 
 %"trajectory"
-settings.trajectory.RF_delay = 0.08*10^-3;      %s; delay between RF and ACQ: Echo Time
+settings.trajectory.RF_delay = 0;%0.08*10^-3;      %s; delay between RF and ACQ: Echo Time
 settings.trajectory.TR = 600*10^-3;             %s; delay between subsequent RF excitations: Repetition Time
 
-settings.trajectory.type = 'ImportFiles';       %optional parameter to simulate different things
+settings.trajectory.type = 'Rect1D';       %optional parameter to simulate different things
 
 %%%%% IMPORTANT
 %
@@ -65,7 +71,7 @@ settings.trajectory.Gread = 1*10^-3;            %T/m; Strength of Readout Gradie
 %Nyquist sampling
 settings.trajectory.Tread = settings.trajectory.k_FOV *2*pi / ( settings.general.gamma * settings.trajectory.Gread );   %readout length
 
-settings.trajectory.TOversamp = 4;  %Oversampling factor
+settings.trajectory.TOversamp = 1;  %Oversampling factor
 settings.trajectory.BW = settings.trajectory.TOversamp*settings.general.gamma * settings.trajectory.Gread * settings.reco.FOV / (2*pi);% sampling Bandwidth
 
 
@@ -75,10 +81,10 @@ switch settings.trajectory.type
         settings.CST.Ny_CST = settings.CST.Nx_CST;
         settings.CST.Nz_CST = settings.CST.Nx_CST;
         settings.CST.SixRows = 1; %if 1: data is saved with real and imag parts seperately  -> 6 export fields
-        settings.CST.path_txtFiles = fullfile(curr_path, 'FieldData');     %path of folder where .txt files are saved
+        settings.CST.path_txtFiles = [curr_path, '/FieldData/'];     %path of folder where .txt files are saved
         
         %determine number of txt-files in folder to get number of rotations/"phase-encoding"-steps
-        tmp_folderinfo = dir(fullfile(settings.CST.path_txtFiles, '*.txt'));        
+        tmp_folderinfo = dir([settings.CST.path_txtFiles '/*.txt']);        
         settings.trajectory.N_PhaseEnc = length(tmp_folderinfo);
         
         settings.trajectory.BW =settings.trajectory.BW; %either take values calculated from Nyquist Sampling / standard encoding or set new values
@@ -86,16 +92,21 @@ switch settings.trajectory.type
         settings.trajectory.Nsamples = ceil(settings.trajectory.Tread * settings.trajectory.BW); %number of samples
         
         clearvars tmp_folderinfo
+    case 'Rect1D'
+        settings.trajectory.N_PhaseEnc = 1;
+        settings.trajectory.BW =settings.trajectory.BW; %either take values calculated from Nyquist Sampling / standard encoding or set new values
+        settings.trajectory.Tread = settings.trajectory.Tread;  %above: "cartesian" calculation but it's rather UTE-like -> half readout length
+        settings.trajectory.Nsamples = (settings.trajectory.Tread * settings.trajectory.BW); %number of samples
     otherwise
         warning('Unrecognized sampling pattern')
 end
 
 if settings.general.B0MapImport
-    pathB0 = fullfile(curr_path, 'FieldData', 'B0Map.mat');     %path of B0Map
+    pathB0 = [curr_path, '/FieldData/B0Map.mat'];     %path of B0Map
     ImportB0 = load(pathB0);
-    impB0Map = ImportB0.B0Map;
+
     %interpolate to requested size
-    Nx_B0=size(ImportB0.B0Map,2); Ny_B0=size(ImportB0.B0Map,3); Nz_B0=size(ImportB0.B0Map,4);
+    Nx_B0=size(ImportB0.B0Map,1); Ny_B0=size(ImportB0.B0Map,2); Nz_B0=size(ImportB0.B0Map,3);
     x_B0 = ([0:Nx_B0-1]-Nx_B0/2+0.5);y_B0 = ([0:Ny_B0-1]-Ny_B0/2+0.5);z_B0 = ([0:Nz_B0-1]-Nz_B0/2+0.5);
     X_B0=linspace(x_B0(1), x_B0(Nx_B0), settings.signal.matrixsize_signal);
     Y_B0=linspace(y_B0(1), y_B0(Ny_B0), settings.signal.matrixsize_signal);
@@ -105,12 +116,8 @@ if settings.general.B0MapImport
     Y_B0_Reco=linspace(y_B0(1), y_B0(Ny_B0), settings.reco.matrixsize_reco);
     Z_B0_Reco=linspace(z_B0(1), z_B0(Nz_B0), settings.reco.matrixsize_reco);
     
-    B0MapInterp = zeros(3, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal);
-    B0MapInterp_Reco = zeros(3, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco, settings.reco.matrixsize_reco);
-    for j = 1:3
-        B0MapInterp(j,:,:,:) =interp3(y_B0, x_B0, z_B0, squeeze(impB0Map(j,:,:,:)), Y_B0', X_B0, Z_B0, 'linear');
-        B0MapInterp_Reco(j,:,:,:) =interp3(y_B0, x_B0, z_B0, squeeze(impB0Map(j,:,:,:)), Y_B0_Reco', X_B0_Reco, Z_B0_Reco, 'linear');
-    end
+    B0MapInterp =interp3(y_B0, x_B0, z_B0, ImportB0.B0Map, Y_B0', X_B0, Z_B0, 'linear');
+    B0MapInterp_Reco =interp3(y_B0, x_B0, z_B0, ImportB0.B0Map, Y_B0_Reco', X_B0_Reco, Z_B0_Reco, 'linear');
 
     settings.signal.B0Map = B0MapInterp;
     settings.reco.B0Map = B0MapInterp_Reco;
@@ -145,42 +152,12 @@ switch settings.TX.pulse_type   %Pulse integrals etc. from De Graaf, Robin A. In
 end
 
 settings.TX.PulseBW = settings.TX.Rp/settings.TX.PulseLength; %Hz:  bandwidth of exc. pulse
-settings.TX.FlipAngle = 6*pi/180;   %flip angle in rad
+settings.TX.FlipAngle = 90*pi/180;   %flip angle in rad
 settings.TX.PulseAmpl = settings.TX.FlipAngle/(settings.general.gamma*settings.TX.PulseLength*settings.TX.pulse_integral);  %amplitude of RF pulse
-settings.TX.ExcSensitivity=1;%not used currently
+settings.TX.ExcSensitivity=1;
 settings.TX.AngleRF_Theta = 0; %rad; phase of excitation pulse
 
-settings.TX.NumberSamplesBloch = 100;%numbers of time steps for Bloch Simulation
-
-if settings.general.B1MapImport     %B1 of excitation
-    pathB1 = fullfile(curr_path, 'FieldData', 'B1Map.mat');     %path of B1Map size: settings.trajectory.N_PhaseEnc,3,time, matrix spatial, matrix spatial, matrix spatial
-    ImportB1 = load(pathB1);
-
-    %interpolate to requested size
-    Nx_B1=size(ImportB1.B1Map,4); Ny_B1=size(ImportB1.B1Map,5); Nz_B1=size(ImportB1.B1Map,6);
-    x_B1 = ([0:Nx_B1-1]-Nx_B1/2+0.5);y_B1 = ([0:Ny_B1-1]-Ny_B1/2+0.5);z_B1 = ([0:Nz_B1-1]-Nz_B1/2+0.5);
-    X_B1=linspace(x_B1(1), x_B1(Nx_B1), settings.signal.matrixsize_signal);
-    Y_B1=linspace(y_B1(1), y_B1(Ny_B1), settings.signal.matrixsize_signal);
-    Z_B1=linspace(z_B1(1), z_B1(Nz_B1), settings.signal.matrixsize_signal);
-    ImB1 = ImportB1.B1Map;
-    B1MapInterp = zeros(settings.trajectory.N_PhaseEnc, 3, settings.TX.NumberSamplesBloch, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal);
-    
-    for ll = 1:settings.trajectory.N_PhaseEnc   %different RF for each readout?
-        for j =1:3  %x,y,z
-            for u = 1:settings.TX.NumberSamplesBloch
-                B1MapInterp(ll, j,u,:,:,:) =interp3(y_B1, x_B1, z_B1, squeeze(ImB1(j,ll,u,:,:,:)), Y_B1', X_B1, Z_B1, 'linear');
-            end
-        end
-    end
-    settings.signal.B1Map = B1MapInterp;
-
-else    
-    %if not imported: "build a simulation B1Map"
-
-    B1 = zeros(settings.trajectory.N_PhaseEnc, 3, settings.TX.NumberSamplesBloch, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal);  %x,y,z in first dimension; 2nd dimension time, last 3 dim: spatial
-
-    %Rest (time dependence / oscillation / frequency) in Bloch Sim function
-end
+settings.TX.NumberSamplesBloch = 1000;%numbers of time steps for Bloch Simulation
 
 % RX Coils
 settings.CoilSens.Ncoil_segments =550;                              %number of segments the coil is divided into 
@@ -191,7 +168,7 @@ settings.CoilSens.RadiusCoilArray = (settings.reco.FOV - 0.005)/2;  %m, Radius o
 settings.CoilSens.DistMaskWire = 0.001;                             %treshold of distance between wire and position where not to evaluate B1 / CoilSens
 
 %Sample
-settings.sample.type = 'Cylinder'; %alternatives: SheppLogan, Sphere, Cylinder, Import
+settings.sample.type = 'Rect1D'; %alternatives: SheppLogan, Sphere, Cylinder, Import
 switch settings.sample.type
     case 'SheppLogan'
         
@@ -216,13 +193,45 @@ switch settings.sample.type
         settings.sample.cyl_SusceptExt = 0.36*10^-6;    %susceptibility outside the phantom
         settings.sample.cyl_SusceptInt = -9.05*10^-6;   %susceptibility inside the phantom
     case 'Import'
-        settings.sample.path = fullfile(curr_path, 'Sample', filesep); %path where to find the files of a sample
+        settings.sample.path = [curr_path, '/Sample/']; %path where to find the files of a sample
+    case 'Rect1D'
+
     otherwise
         warning('Not implemented');
 end
 
 if ~settings.general.CoilSens
     settings.CoilSens.NReceiveCoils = 1; %minimize number of unnecessary for loops and matrixsizes if uniform coil sensitivity is desired
+end
+
+if settings.general.B1MapImport
+    pathB1 = [curr_path, '/FieldData/B1Map.mat'];     %path of B1Map size: settings.trajectory.N_PhaseEnc,3,time, matrix spatial, matrix spatial, matrix spatial
+    ImportB1 = load(pathB1);
+
+    %interpolate to requested size
+    Nx_B1=size(ImportB1.B1Map,1); Ny_B1=size(ImportB1.B1Map,2); Nz_B1=size(ImportB1.B1Map,3);
+    x_B1 = ([0:Nx_B1-1]-Nx_B1/2+0.5);y_B1 = ([0:Ny_B1-1]-Ny_B1/2+0.5);z_B1 = ([0:Nz_B1-1]-Nz_B1/2+0.5);
+    X_B1=linspace(x_B1(1), x_B1(Nx_B1), settings.signal.matrixsize_signal);
+    Y_B1=linspace(y_B1(1), y_B1(Ny_B1), settings.signal.matrixsize_signal);
+    Z_B1=linspace(z_B1(1), z_B1(Nz_B1), settings.signal.matrixsize_signal);
+    ImB1 = ImportB1.B1Map;
+    B1MapInterp = zeros(size(ImB1,1), size(ImB1,2), settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal);
+    
+    for ll = 1:settings.trajectory.N_PhaseEnc   %different RF for each readout?
+        for j =1:3  %x,y,z
+            for u = 1:settings.TX.NumberSamplesBloch
+                B1MapInterp(ll, j,u,:,:,:) =interp3(y_B1, x_B1, z_B1, squeeze(ImB1(ll,j,u,:,:,:)), Y_B1', X_B1, Z_B1, 'linear');
+            end
+        end
+    end
+    settings.signal.B1Map = B1MapInterp;
+
+else    
+    %if not imported: "build a simulation B1Map"
+    B1 = zeros(3, settings.TX.NumberSamplesBloch, settings.signal.matrixsize_signal);  %x,y,z in first dimension; 2nd dimension time, last dim: spatial
+
+    %Rest (time dependence / oscillation / frequency) in Bloch Sim function
+    settings.signal.B1MapNoImport = B1;
 end
 %% Coordinates and Sample
 
@@ -434,8 +443,8 @@ switch settings.sample.type
 
     case 'Import'
         %examplary load JEMRIS Brain Phantom
-        load(fullfile(settings.sample.path,'MNIbrain.mat'), 'BRAIN');
-        load(fullfile(settings.sample.path,'MNIdeltaB.mat'), 'DB');
+        load([settings.sample.path,'MNIbrain.mat'], 'BRAIN');
+        load([settings.sample.path,'MNIdeltaB.mat'], 'DB');
 
         %Code from JEMRIS
 
@@ -516,20 +525,38 @@ switch settings.sample.type
         sampleS.DB = dB;
         DB_straight = reshape(squeeze(dB),1,[]);
 
+    case 'Rect1D'
+        RectPhantom = rectangularPulse(-settings.reco.FOV/3,settings.reco.FOV/3,x);
+          
+        sampleS.M0 = squeeze(RectPhantom);
+        
+        sampleS.T1 = Inf(size(RectPhantom));
+        sampleS.T2 = Inf(size(RectPhantom));
+
+        sample_straight = reshape(sampleS.M0, 1, []);
+        sample_straight(2,:) =  reshape(squeeze(x), 1, []); %x
+        sample_straight(3,:) =  reshape(squeeze(y), 1, []); %y
+        sample_straight(4,:) =  reshape(squeeze(z), 1, []); %z
+        sample_straight(5, :) = reshape(sampleS.T2, 1, []); %T2
+        sample_straight(6, :) = reshape(sampleS.T1, 1, []); %T1
+        
+        dB = zeros(size(RectPhantom));
+        sampleS.DB = dB;
+        DB_straight = reshape(squeeze(dB),1,[]);
     otherwise
         warning('Not implemented yet!')
 end
-DB_straight = DB_straight + settings.signal.deltaB_Sampling;
-sampleS.DB = sampleS.DB + settings.signal.deltaB_Sampling;
-dB = dB + settings.signal.deltaB_Sampling;
 
-as(sampleS.M0, 'select', [':,:,', num2str(settings.reco.matrixsize_reco/2)]);
+as(sampleS.M0)
+%as(sampleS.M0, 'select', [':,:,', num2str(settings.reco.matrixsize_reco/2)]);
 timeElapsed_sample = toc
-clearvars x_reco y_reco x y air_suscept
+%clearvars x_reco y_reco x y air_suscept
 
 %% Start Simulation
 switch settings.trajectory.type
     case 'ImportFiles'
+        [reco_rho_img_func] = simArbFields3D(settings, dB, DB_straight, sampleS, sample_straight);
+    case 'Rect1D'
         [reco_rho_img_func] = simArbFields3D(settings, dB, DB_straight, sampleS, sample_straight);
     otherwise
         error('Not implemented!!')
