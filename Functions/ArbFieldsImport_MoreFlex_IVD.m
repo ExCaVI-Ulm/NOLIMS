@@ -36,10 +36,12 @@ for j =1:length(filepaths_nonsim)
     end
 end
 
-startRow = 3;
+%startRow = 3;
+startRow = 1;%for tests with SimFields Loading
 
 if settings.CST.SixRows
-    formatSpec = '%*51s%17f%17f%17f%17f%f%[^\n\r]';
+    %formatSpec = '%*51s%17f%17f%17f%17f%f%[^\n\r]';
+    formatSpec = '%f%f%f%f%f%f%f%f%f%[^\n\r]';%for tests with SimFields Loading
 else
     formatSpec = '%*51s%17f%17f%f%[^\n\r]';
 end
@@ -66,10 +68,12 @@ Bvec_Reco = zeros(settings.general.RAM_StepsPhaseEnc, settings.reco.matrixsize_r
 NRAM_loc = settings.general.RAM_StepsPhaseEnc;
 SixRowsLoc = settings.CST.SixRows;
 FOV_loc = settings.reco.FOV;
+B0Import_loc = settings.general.B0MapImport;
+B0Reco_loc = settings.general.B0MapInReco;
 
 %import of files
 for kkk = 1:NRAM_loc
-    [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, kkk, u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc, settings);
+    [Bout, Bout_Reco] = ImportDataTXT(settings, filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, kkk, u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc, B0Import_loc, B0Reco_loc);
     %Bout(1:3,X,Y,Z); 1:X-Component, 2:Y-Component, 3:Z-Component
     
     Bvec(kkk,:,:,:,1) = squeeze(Bout(1,:,:,:));
@@ -211,15 +215,20 @@ B_v_RF_reco(:,:,:,:,2) = Bvec_Reco(:,:,:,:,2);
 B_v_RF_reco(:,:,:,:,3) = Bvec_Reco(:,:,:,:,3);
 end
 
-function [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, jj,u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc,settings)
+function [Bout, Bout_Reco] = ImportDataTXT(settings, filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, jj,u, matrixsize_signal_loc, matrixsize_reco_loc, NRAM_loc, B0Import_loc, B0Reco_loc)
     fileID = fopen(fullfile(path_rot, filepaths_nonsim{jj + (u-1)*NRAM_loc}),'r');
-    dataArray = textscan(fileID, formatSpec, 'Delimiter', '', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
-    
+    %dataArray = textscan(fileID, formatSpec, 'Delimiter', '', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
+    dataArray = textscan(fileID, formatSpec, 'Delimiter', ',', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
+
     fclose(fileID);
     if SixRowsLoc
-        BXC1 = dataArray{:, 1};
-        BYC1 = dataArray{:, 3};
-        BZC1 = dataArray{:, 5};
+%         BXC1 = dataArray{:, 1};
+%         BYC1 = dataArray{:, 3};
+%         BZC1 = dataArray{:, 5};
+
+        BXC1 = dataArray{:, 4};%for tests with SimFields Loading
+        BYC1 = dataArray{:, 6};
+        BZC1 = dataArray{:, 8};
     else
         BXC1 = dataArray{:, 1};
         BYC1 = dataArray{:, 2};
@@ -288,12 +297,12 @@ function [Bout, Bout_Reco] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRo
     BYrFOV_interpol_Reco=interp3(y_Bfield, x_Bfield, z_Bfield, BYrFOV,Y_Bfield_Reco', X_Bfield_Reco, Z_Bfield_Reco, 'linear');
     BZrFOV_interpol_Reco=interp3(y_Bfield, x_Bfield, z_Bfield, BZrFOV,Y_Bfield_Reco', X_Bfield_Reco, Z_Bfield_Reco, 'linear');
     
-     if settings.general.B0MapImport
+     if B0Import_loc
         BXrFOV_interpol = BXrFOV_interpol + squeeze(settings.signal.B0Map(1,:,:,:));
         BYrFOV_interpol = BYrFOV_interpol + squeeze(settings.signal.B0Map(2,:,:,:));
         BZrFOV_interpol = BZrFOV_interpol + squeeze(settings.signal.B0Map(3,:,:,:));
 
-        if settings.general.B0MapInReco
+        if B0Reco_loc
             BXrFOV_interpol_Reco = BXrFOV_interpol_Reco + squeeze(settings.reco.B0Map(1,:,:,:));
             BYrFOV_interpol_Reco = BYrFOV_interpol_Reco + squeeze(settings.reco.B0Map(2,:,:,:));
             BZrFOV_interpol_Reco = BZrFOV_interpol_Reco + squeeze(settings.reco.B0Map(3,:,:,:));

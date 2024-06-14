@@ -65,9 +65,9 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
             BlochM0_rots((1:settings.general.RAM_StepsPhaseEnc)+(u-1)*settings.general.RAM_StepsPhaseEnc,:,:,:,:) = BlochM0;
         else
             BlochM0 = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, 3);
-            %assume that all initial magnetization lies in y
+            %assume that all precessing magnetization lies in y
             BlochM0(:,:,:,:,2) = permute(repmat(sampleS.M0, [1, 1, 1, settings.general.RAM_StepsPhaseEnc]), [4,1,2,3]); 
-            BlochM0(:,:,:,:,3) = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal); 
+            BlochM0(:,:,:,:,3) = zeros(settings.general.RAM_StepsPhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal);
         end
 
         %which part of magnetization vector can be detected
@@ -123,7 +123,6 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
                 rho_vec(:,ll + (u-1)*settings.general.RAM_StepsPhaseEnc, uu) = squeeze(M_detect_coil(uu,ll,:));
             end
         end
-
         
         %IVD
         %Alternative to Oversampling using matrixsize_signal, matrixsize_reco: simulate IVD per sinc dephasing
@@ -420,6 +419,6 @@ function [reco_rho_img] = simArbFields3D(settings, dB, DB_straight, sampleS, sam
 
     end
 
-    as(reco_rho_img, 'Img Func', 'select', [':,:,', num2str(settings.reco.matrixsize_reco/2)]);
+    as(reco_rho_img, 'title', 'Img Func', 'select', [':,:,', num2str(round(settings.reco.matrixsize_reco/2))]);
     elapsedtime_reco = toc
 end

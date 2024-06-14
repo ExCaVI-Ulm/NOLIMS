@@ -33,15 +33,15 @@ settings.general.B0MapImport = false;                                           
 settings.general.B0MapInReco = false;                                                           %if true: B0Map in Reconstruction used
 settings.general.B1MapImport = false;                                                           %if true: load B1Map for excitation, be careful with the format / left/right circularized etc.
 
-settings.general.RAMSavingReco = false;                                                         %if true: ART reconstruction -> reduces RAM and enables GPU reco if not too large matrixsizes
+settings.general.RAMSavingReco = true;                                                         %if true: ART reconstruction -> reduces RAM and enables GPU reco if not too large matrixsizes
 settings.general.gpuComp = false;                                                               %if true: Reconstruction GPU for ART
-settings.general.RAM_StepsPhaseEnc = 1;                                                       %if < encoding steps: instead of having all phase encoding steps in one matrix, divide them into multiple blocks, parameter indicates stepsize
+settings.general.RAM_StepsPhaseEnc = 100;                                                       %if < encoding steps: instead of having all phase encoding steps in one matrix, divide them into multiple blocks, parameter indicates stepsize
 
 settings.reco.FOV = 0.2;                        %FOV in m
 
-settings.signal.matrixsize_signal = 8;         %matrix size used for simulating MRI signal
+settings.signal.matrixsize_signal = 32;         %matrix size used for simulating MRI signal
 
-settings.reco.matrixsize_reco = 8;             %reconstructed matrix size: if matrixsize_signal > matrixsize_reco -> simulation of intravoxel dephasing -> factor between two values indicates how many subvoxels are simulated
+settings.reco.matrixsize_reco = 32;             %reconstructed matrix size: if matrixsize_signal > matrixsize_reco -> simulation of intravoxel dephasing -> factor between two values indicates how many subvoxels are simulated
 
 %"trajectory"
 settings.trajectory.RF_delay = 0.08*10^-3;      %s; delay between RF and ACQ: Echo Time
@@ -75,7 +75,7 @@ switch settings.trajectory.type
         settings.CST.Ny_CST = settings.CST.Nx_CST;
         settings.CST.Nz_CST = settings.CST.Nx_CST;
         settings.CST.SixRows = 1; %if 1: data is saved with real and imag parts seperately  -> 6 export fields
-        settings.CST.path_txtFiles = fullfile(curr_path, 'FieldData');     %path of folder where .txt files are saved
+        settings.CST.path_txtFiles = fullfile(curr_path, 'FieldData', 'ShimEncode100');     %path of folder where .txt files are saved
         
         %determine number of txt-files in folder to get number of rotations/"phase-encoding"-steps
         tmp_folderinfo = dir(fullfile(settings.CST.path_txtFiles, '*.txt'));        
@@ -145,7 +145,7 @@ switch settings.TX.pulse_type   %Pulse integrals etc. from De Graaf, Robin A. In
 end
 
 settings.TX.PulseBW = settings.TX.Rp/settings.TX.PulseLength; %Hz:  bandwidth of exc. pulse
-settings.TX.FlipAngle = 6*pi/180;   %flip angle in rad
+settings.TX.FlipAngle = 90*pi/180;   %flip angle in rad
 settings.TX.PulseAmpl = settings.TX.FlipAngle/(settings.general.gamma*settings.TX.PulseLength*settings.TX.pulse_integral);  %amplitude of RF pulse
 settings.TX.ExcSensitivity=1;%not used currently
 settings.TX.AngleRF_Theta = 0; %rad; phase of excitation pulse
@@ -519,11 +519,8 @@ switch settings.sample.type
     otherwise
         warning('Not implemented yet!')
 end
-DB_straight = DB_straight + settings.signal.deltaB_Sampling;
-sampleS.DB = sampleS.DB + settings.signal.deltaB_Sampling;
-dB = dB + settings.signal.deltaB_Sampling;
 
-as(sampleS.M0, 'select', [':,:,', num2str(settings.reco.matrixsize_reco/2)]);
+%as(sampleS.M0, 'select', [':,:,', num2str(round(settings.reco.matrixsize_reco/2))]);
 timeElapsed_sample = toc
 clearvars x_reco y_reco x y air_suscept
 

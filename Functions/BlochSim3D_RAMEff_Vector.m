@@ -98,7 +98,7 @@ function [BlochM0] = BlochSim3D_RAMEff_Vector(settings, Sample, Bvec_RF, sample_
    for ll=1:settings.general.RAM_StepsPhaseEnc
             parfor j =1:(size(Bvec_RF,2)*size(Bvec_RF,3)*size(Bvec_RF,4))%par
             
-                M_sim = zeros(4,2);                            
+                M_sim = zeros(4,2);                              
                 M_sim(:,1) = [squeeze(Minit_straight(ll,j,:)); 1];                                
                           
                 for u=2:length(time_Bloch)
@@ -113,6 +113,7 @@ function [BlochM0] = BlochSim3D_RAMEff_Vector(settings, Sample, Bvec_RF, sample_
                     M_sim(:,2) = M_sim(:,1) + (A*M_sim(:,1))*dt_Bloch;
                     M_sim(:,1) = M_sim(:,2);                    
                 end
+
                 Mvec_pulse = M_sim(:,end); %save M_vector
                 %take perpendicular component after Bloch Simulation: only precessing component can be detected
                 Mvec_pulse_2(ll,:,j) = squeeze(Mvec_pulse(1:3)) - dot(squeeze(Mvec_pulse(1:3)), squeeze(B_vec_rot(ll,j,1:3))) *squeeze(B_vec_rot(ll,j,1:3)) /norm(squeeze(B_vec_rot(ll,j,1:3)))^2;

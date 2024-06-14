@@ -24,10 +24,13 @@ for j =1:length(filepaths_nonsim)
     end
 end
 
-startRow = 3;
+%startRow = 3;
+startRow = 1;%for tests with SimFields Loading
+
 
 if settings.CST.SixRows
-    formatSpec = '%*51s%17f%17f%17f%17f%f%[^\n\r]';
+    %formatSpec = '%*51s%17f%17f%17f%17f%f%[^\n\r]';
+    formatSpec = '%f%f%f%f%f%f%f%f%f%[^\n\r]';%for tests with SimFields Loading
 else
     formatSpec = '%*51s%17f%17f%f%[^\n\r]';
 end
@@ -37,9 +40,10 @@ matrixsize_reco_loc = settings.reco.matrixsize_reco;
 
 Bvec = zeros(settings.trajectory.N_PhaseEnc, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, settings.signal.matrixsize_signal, 4);%1 x, 2 y, 3 z, 4 abs; old: length(time_tot), 
 SixRowsLoc = settings.CST.SixRows;
+B0Import_loc = settings.general.B0MapImport;
 
 for kkk = 1:settings.trajectory.N_PhaseEnc
-    [Bout] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, kkk, matrixsize_signal_loc, matrixsize_reco_loc, settings);
+    [Bout] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, kkk, matrixsize_signal_loc, matrixsize_reco_loc, settings, B0Import_loc);
     %Bout(1:3,X,Y,Z); 1:X-Component, 2:Y-Component, 3:Z-Component
     
     Bvec(kkk,:,:,:,1) = squeeze(Bout(1,:,:,:));
@@ -55,14 +59,22 @@ settings.general.FreqField = 42.577478 * settings.general.B0; %MHz
 
 end
 
-function [Bout] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, jj, matrixsize_signal_loc, matrixsize_reco_loc, settings)
+function [Bout] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSpec, Nx_CST, Ny_CST, Nz_CST, path_rot, jj, matrixsize_signal_loc, matrixsize_reco_loc, settings, B0Import_loc)
     fileID = fopen(fullfile(path_rot, filepaths_nonsim{jj}),'r');
-    dataArray = textscan(fileID, formatSpec, 'Delimiter', '', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
+    %dataArray = textscan(fileID, formatSpec, 'Delimiter', '', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
+    dataArray = textscan(fileID, formatSpec, 'Delimiter', ',', 'WhiteSpace', '', 'TextType', 'string', 'EmptyValue', NaN, 'HeaderLines' ,startRow-1, 'ReturnOnError', false, 'EndOfLine', '\r\n');
+
+    
     fclose(fileID);
     if SixRowsLoc
-        BXC1 = dataArray{:, 1};
-        BYC1 = dataArray{:, 3};
-        BZC1 = dataArray{:, 5};
+%         BXC1 = dataArray{:, 1};
+%         BYC1 = dataArray{:, 3};
+%         BZC1 = dataArray{:, 5};
+
+        BXC1 = dataArray{:, 4};%for tests with SimFields Loading
+        BYC1 = dataArray{:, 6};
+        BZC1 = dataArray{:, 8};
+
     else
         BXC1 = dataArray{:, 1};
         BYC1 = dataArray{:, 2};
@@ -130,6 +142,6 @@ function [Bout] = ImportDataTXT(filepaths_nonsim, SixRowsLoc, startRow, formatSp
     Bout = zeros(3, matrixsize_signal_loc, matrixsize_signal_loc, matrixsize_signal_loc);
     Bout(1,:,:,:) = BXrFOV_interpol;    
     Bout(2,:,:,:) = BYrFOV_interpol;
-    Bout(3,:,:,:) = BZrFOV_interpol+ settings.general.B0;
+    Bout(3,:,:,:) = BZrFOV_interpol + settings.general.B0;
     disp('Added Ground field'); %might be omitted if already included in .txt file
 end
