@@ -1,0 +1,28 @@
+--Figure title--
+'Img Func'
+
+--Image dimensions--
+32  32
+
+--Selected image--
+:,:,16
+
+--Image stats--
+dim  = 32  32
+min  = 0.003635
+mean = 0.291
+max  = 1.141
+L2   = 14.49
+
+--Image windowing--
+center/width = [ 0.57207 1.1369 ]
+colormap     = Gray(256)
+
+--InfoText--
+
+--Export date--
+date : 4.6.2024
+time : 8:9:12
+
+--arrayShow version--
+0.35
