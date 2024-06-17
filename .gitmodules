@@ -1,0 +1,3 @@
+[submodule "arrShow"]
+	path = arrShow
+	url = https://github.com/tsumpf/arrShow
