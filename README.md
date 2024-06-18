@@ -25,7 +25,7 @@ NOLIMS is a open-source MATLAB simulation package for non-linear encoded MRI. An
 #### Example data
 - Change to one of the Branches `Example_ShimTermEncoding` or `Example_TimeDependence1D` for example Code
 - Branch `Example_TimeDependence1D` demonstrates how a time dependent encoding scheme might be implemented
-- In branch `Example_ShimTermEncoding` a ZTE-like encoding scheme using the Higher-Order Shimcoils of a human MRI machine is simulated. You can run the script and compare it with with the image stored in the folder "ExampleResult_Encoding_Shimterms" (Slice 16 of last dimension in array: ":, :, 16").
+- In branch `Example_ShimTermEncoding` a ZTE-like encoding scheme using the Higher-Order Shimcoils of a human MRI machine is simulated. You can run the script and compare it with with the image stored in the folder "ExampleResult_Encoding_Shimterms" (Slice 16 of last dimension in array: ":, :, 16"). NOTE: depending on the settings of `ArrayShow`, the image may be flipped up/down (first dimension)
 - In the folder FieldData, you will find:
 	- Example file demonstrating the file structure of CST exported field data, NOTE: In this file, the dominant magnetic field vector is in y-direction; in the 	  
            Simulation the dominant field vector should be in z-direction
